@@ -1,0 +1,133 @@
+#!/bin/bash
+#
+# tarball2appimage by LinuxDicasPro
+#
+####################################
+
+
+destdir=~/__APPIMAGE__
+test -e "../_APPIMAGE" && destdir="../_APPIMAGE" # Opcional
+
+###########################################
+
+arch="x86_64"
+prg="NoiseTorch"
+link="https://github.com/noisetorch/NoiseTorch/releases"
+
+###########################################
+
+
+for i in {1..35}; { printf '─'; }; printf "\n"
+printf "Search latest version: "
+
+
+########
+
+version="$(grep -Eom1 "([0-9]+[.]){2}[0-9]+" <(grep -A1 "Latest" <(links -dump "$link")))"
+
+########
+
+
+printf "\033[1;32m$version\033[m\n"
+for i in {1..35}; { printf '─'; }; printf "\n"
+
+
+test -z "$version" && {
+    echo "update script. version not found!"
+    exit 1
+}
+
+set -e
+
+test ! -e $destdir && mkdir -p $destdir
+cd $destdir
+
+
+test -e "$prg-$version-$arch.AppImage" && {
+    echo "appimage found!"
+    exit 0
+}
+
+
+test ! -e "appimagetool-x86_64.AppImage" && {
+    link_tool="https://github.com/AppImage/AppImageKit/releases/download/13/appimagetool-x86_64.AppImage"
+    wget -c -q --show-progress "$link_tool"
+    chmod +x "appimagetool-x86_64.AppImage"
+}
+
+#########
+
+link_prg="https://github.com/noisetorch/NoiseTorch/releases/download/v${version}/NoiseTorch_x64_v${version}.tgz"
+
+#########
+
+
+wget -c -q --show-progress "$link_prg"
+file_prg=${link_prg##*/}
+
+cwd=$PWD
+
+rm -rf "$prg.AppDir"
+mkdir -p "$prg.AppDir"
+cd "$prg.AppDir"
+
+echo -e "\nextract $file_prg ..."
+printf "$file_prg\t["
+tar -xzf "$cwd/$file_prg" --checkpoint=50 --checkpoint-action=exec='printf ='
+echo -e "]\n"
+
+
+
+mv ./.local $prg
+
+mv $prg/share/applications/noisetorch.desktop $prg.desktop
+mv $prg/share/icons/hicolor/256x256/apps/noisetorch.png noisetorch.png
+
+rm -rf ./$prg/share
+
+echo "#!/bin/bash
+
+cd \$APPDIR
+desktopfile=~/.local/share/applications/$prg.desktop
+iconfile=~/.local/share/pixmaps/noisetorch.png
+
+test ! -e \"\$desktopfile\" && cp $prg.desktop ~/.local/share/applications/
+test ! -e \"\$iconfile\" && cp noisetorch.png ~/.local/share/pixmaps/
+
+if ! grep -q \"\$APPIMAGE\" \"\$desktopfile\"; then
+    sed -i \"s:Exec=.*:Exec=\$APPIMAGE:\" \"\$desktopfile\"
+    sed -i \"s:Icon=.*:Icon=\$iconfile:\" \"\$desktopfile\"
+    /usr/bin/update-desktop-database -q || true
+    test -e usr/share/icons/hicolor/icon-theme.cache && {
+        test -x /usr/bin/gtk-update-icon-cache && /usr/bin/gtk-update-icon-cache ~/.local/share/pixmaps/ 2>&1 >&- || true
+    }
+fi
+
+cd \$APPDIR/$prg/bin
+
+test ! -e ~/.local/bin && mkdir ~/.local/bin
+test ! -e ~/.local/bin/noisetorch && {
+    cp ./noisetorch ~/.local/bin
+} || {
+    test \"\$(md5sum \$APPDIR/$prg/bin/noisetorch | awk '{print \$1}')\" != \"\$(md5sum ~/.local/bin/noisetorch | awk '{print \$1}')\" && cp ./noisetorch ~/.local/bin
+}
+
+cd ~/.local/bin
+./noisetorch" > AppRun
+
+chmod +x AppRun
+cd ..
+
+printf "\n"; for ((i=0; i<$COLUMNS; i++)); { printf '─'; }; echo -e "\n"
+
+
+env ARCH=$arch ./appimagetool-x86_64.AppImage "$prg.AppDir"
+mv "$prg-$arch.AppImage" "$prg-$version-$arch.AppImage"
+
+printf "\n"; for ((i=0; i<$COLUMNS; i++)); { printf '─'; }; echo -e "\n"
+
+rm -rf "$prg.AppDir"
+cd ..
+
+echo "appimage saved in $destdir/$prg-$version-$arch.AppImage"
+exit 0
